@@ -11,9 +11,7 @@ import org.jetbrains.kotlin.name.Name
 
 
 class IrEvalFunctionTransformer(
-  private val pluginContext: IrPluginContext,
-  private val interpreter: EvalIrInterpreter,
-  private val sharedContext: SharedEvalContext
+  private val pluginContext: IrPluginContext
 ) : IrElementTransformerVoid() {
   override fun visitCall(expression: IrCall): IrExpression {
     if (!expression.symbol.owner.name.asString().startsWith("eval")) {
@@ -21,15 +19,11 @@ class IrEvalFunctionTransformer(
     }
 
     println("got past eval.")
-    // 1. First transform all arguments recursively
+
+    // Transform arguments recursively
     val transformedArgs = expression.valueArgumentsCount.let { count ->
       (0 until count).map { i ->
-        expression.getValueArgument(i)?.transform(this, null)?.also { transformed ->
-          if (transformed is IrConst<*>) {
-            val param = expression.symbol.owner.valueParameters[i]
-            sharedContext.variables[param.symbol] = transformed
-          }
-        }
+        expression.getValueArgument(i)?.transform(this, null)
       }
     }
 
@@ -47,6 +41,8 @@ class IrEvalFunctionTransformer(
       println("past 2/3")
 
       // 4. Initialize interpreter with the constant parameters
+      // Create a new interpreter instance for this function call
+      val interpreter = EvalIrInterpreter(pluginContext)
       interpreter.initializeFunctionContext(parameterMappings)
 
       // 5. Evaluate the function
@@ -57,23 +53,23 @@ class IrEvalFunctionTransformer(
         // Create new constant based on the result type
 
         // create a temporary value to store the result
-        val tempValueParameter = IrValueParameterImpl(
-          startOffset = expression.startOffset,
-          endOffset = expression.endOffset,
-          origin = IrDeclarationOrigin.DEFINED,
-          symbol = IrValueParameterSymbolImpl(),
-          name = Name.identifier("temp_${expression.symbol.owner.name}"),
-          index = -1,
-          type = result.type,
-          varargElementType = null,
-          isCrossinline = false,
-          isNoinline = false,
-          isHidden = false,
-          isAssignable = false
-        )
-
-
-        sharedContext.variables[tempValueParameter.symbol] = result
+//        val tempValueParameter = IrValueParameterImpl(
+//          startOffset = expression.startOffset,
+//          endOffset = expression.endOffset,
+//          origin = IrDeclarationOrigin.DEFINED,
+//          symbol = IrValueParameterSymbolImpl(),
+//          name = Name.identifier("temp_${expression.symbol.owner.name}"),
+//          index = -1,
+//          type = result.type,
+//          varargElementType = null,
+//          isCrossinline = false,
+//          isNoinline = false,
+//          isHidden = false,
+//          isAssignable = false
+//        )
+//
+//
+//        sharedContext.variables[tempValueParameter.symbol] = result
         println("got here const")
         return when (result.kind) {
           IrConstKind.Int -> IrConstImpl(
@@ -104,10 +100,5 @@ class IrEvalFunctionTransformer(
 
     println("result is not const")
     return super.visitCall(expression)
-  }
-
-  override fun visitGetValue(expression: IrGetValue): IrExpression {
-    // Check shared context for any stored values
-    return sharedContext.variables[expression.symbol] ?: super.visitGetValue(expression)
   }
 }

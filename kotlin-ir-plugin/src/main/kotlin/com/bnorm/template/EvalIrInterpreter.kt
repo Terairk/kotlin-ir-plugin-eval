@@ -11,22 +11,18 @@ import org.jetbrains.kotlin.ir.symbols.IrValueSymbol
 import org.jetbrains.kotlin.ir.visitors.IrElementTransformerVoid
 
 
-class EvalIrInterpreter(private val context: IrPluginContext, private val sharedContext: SharedEvalContext) {
+class EvalIrInterpreter(private val context: IrPluginContext) {
   private lateinit var constTransformer: IrElementTransformerVoid;
+  private val localContext = mutableMapOf<IrValueSymbol, IrExpression>()
 
   fun initializeFunctionContext(mappings: Map<IrValueParameter, IrConst<*>>) {
     // Store the constant values for parameters
-    sharedContext.variables.putAll(mappings.map { (param, const) ->
+    localContext.clear()
+    localContext.putAll(mappings.map { (param, const) ->
       param.symbol to const
     })
 
-    val newMappings = mappings.mapKeys { (parameter, _) -> parameter.symbol as IrValueSymbol }
-    constTransformer = IrConstTransformer(context, sharedContext)
-  }
-
-
-  private class EvalContext {
-    val variables = mutableMapOf<IrValueSymbol, IrExpression>()
+    constTransformer = IrConstTransformer(context, localContext)
   }
 
   fun evaluateFunction(function: IrFunction): IrExpression? {
@@ -39,8 +35,7 @@ class EvalIrInterpreter(private val context: IrPluginContext, private val shared
         when (body) {
           is IrBlockBody      -> evaluateBlockBody(body)
           is IrExpressionBody -> evaluateExpression(
-            body.expression,
-            context = sharedContext
+            body.expression
           )
           else                -> null
         }
@@ -57,24 +52,24 @@ class EvalIrInterpreter(private val context: IrPluginContext, private val shared
     for (statement in body.statements) {
       result = when (statement) {
         is IrReturn   -> {
-          return evaluateExpression(statement.value, sharedContext)
+          return evaluateExpression(statement.value)
         }
         is IrVariable  -> ({
           val initializer = statement.initializer?.let {
-                evaluateExpression(it, sharedContext)
+                evaluateExpression(it)
           }
           if (initializer != null) {
-                sharedContext.variables[statement.symbol] = initializer
+                localContext[statement.symbol] = initializer
           }
           initializer ?: statement
         }) as IrExpression
-        is IrWhen      -> evaluateWhen(statement, sharedContext)
-        is IrWhileLoop -> evaluateWhile(statement, sharedContext)
+        is IrWhen      -> evaluateWhen(statement)
+        is IrWhileLoop -> evaluateWhile(statement)
         else           -> ({
           when (val transformed = statement.transform(constTransformer, null)) {
                 is IrGetValue -> {
                   // Look up variable value from context
-                  sharedContext.variables[transformed.symbol] ?: transformed
+                  localContext[transformed.symbol] ?: transformed
                 }
                 else -> transformed
           }
@@ -87,21 +82,15 @@ class EvalIrInterpreter(private val context: IrPluginContext, private val shared
 
 
 
-  private fun evaluateExpression(expr: IrExpression, context: SharedEvalContext): IrExpression {
+ private fun evaluateExpression(expr: IrExpression): IrExpression {
     return when (expr) {
       is IrCall -> {
-        // Handle arithmetic operations
-        val transformedArgs = (0 until expr.valueArgumentsCount).mapNotNull { i ->
-          expr.getValueArgument(i)?.let { arg ->
-            evaluateExpression(arg, context)
-          }
+        // Handle arithmetic operation
+        val transformedArgs = expr.symbol.owner.valueParameters.mapNotNull { param ->
+          localContext[param.symbol]?.let { evaluateExpression(it) }
         }
 
         if (transformedArgs.all { it is IrConst<*> }) {
-          // Create a new IrCall with the transformed arguments
-          transformedArgs.forEachIndexed { index, arg ->
-            expr.putValueArgument(index, arg)
-          }
           expr.transform(constTransformer, null)
         } else {
           expr
@@ -109,31 +98,35 @@ class EvalIrInterpreter(private val context: IrPluginContext, private val shared
       }
       is IrGetValue -> {
         // Check if it's a parameter reference
-        context.variables[expr.symbol] ?: expr
+        println("got here for evalExpr")
+        localContext[expr.symbol] ?: expr
       }
-      else -> expr.transform(constTransformer, null)
+      else -> {
+        println("got const for evalExpr")
+        expr.transform(constTransformer, null)
+      }
     }
   }
 
-  private fun evaluateWhen(whenExpr: IrWhen, context: SharedEvalContext): IrExpression {
+  private fun evaluateWhen(whenExpr: IrWhen): IrExpression {
     for (branch in whenExpr.branches) {
-      val condition = evaluateExpression(branch.condition, context)
+      val condition = evaluateExpression(branch.condition)
       if (condition is IrConst<*> && condition.value as Boolean) {
-        return evaluateExpression(branch.result, context)
+        return evaluateExpression(branch.result)
       }
     }
     return whenExpr
   }
 
-  private fun evaluateWhile(whileExpr: IrWhileLoop, context: SharedEvalContext): IrExpression {
+  private fun evaluateWhile(whileExpr: IrWhileLoop): IrExpression {
     var result: IrExpression = createUnitValue()
 
     while (true) {
-      val condition = evaluateExpression(whileExpr.condition, context)
+      val condition = evaluateExpression(whileExpr.condition)
       if (condition !is IrConst<*> || !(condition.value as Boolean)) {
         break
       }
-      result = whileExpr.body?.let { evaluateExpression(it, context) }!!
+      result = whileExpr.body?.let { evaluateExpression(it) }!!
     }
 
     return result

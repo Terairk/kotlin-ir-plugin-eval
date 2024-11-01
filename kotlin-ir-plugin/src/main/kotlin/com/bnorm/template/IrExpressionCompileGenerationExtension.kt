@@ -23,9 +23,7 @@ import org.jetbrains.kotlin.ir.util.dump
 
 class IrExpressionCompileGenerationExtension : IrGenerationExtension {
   override fun generate(moduleFragment: IrModuleFragment, pluginContext: IrPluginContext) {
-    val sharedContext = SharedEvalContext()
-    val interpreter = EvalIrInterpreter(pluginContext, sharedContext)
-    val transformer = IrEvalFunctionTransformer(pluginContext, interpreter, sharedContext)
+    val transformer = IrEvalFunctionTransformer(pluginContext)
     val newFragment = moduleFragment.transform(transformer, null)
 
     println(newFragment.dump())

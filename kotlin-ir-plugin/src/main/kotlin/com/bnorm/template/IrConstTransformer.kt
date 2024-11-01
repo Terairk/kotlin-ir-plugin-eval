@@ -1,20 +1,17 @@
 package com.bnorm.template
 
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
-import org.jetbrains.kotlin.codegen.StackValue.Shared
 import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
-import org.jetbrains.kotlin.ir.declarations.IrValueParameter
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.expressions.impl.IrConstImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrCallImpl
 import org.jetbrains.kotlin.ir.symbols.IrValueSymbol
-import org.jetbrains.kotlin.ir.util.functions
 import org.jetbrains.kotlin.ir.visitors.IrElementTransformerVoid
 import org.jetbrains.kotlin.name.Name
 
 class IrConstTransformer(
   private val context: IrPluginContext,
-  private val sharedContext: SharedEvalContext
+  private val localContext: Map<IrValueSymbol, IrExpression>
 ) : IrElementTransformerVoid() {
 
   override fun visitConst(expression: IrConst<*>): IrExpression {
@@ -24,7 +21,7 @@ class IrConstTransformer(
 
   override fun visitGetValue(expression: IrGetValue): IrExpression {
     println("Visiting getValue: ${expression.symbol}")
-    return sharedContext.variables[expression.symbol] ?: expression
+    return localContext[expression.symbol] ?: expression
   }
 
   override fun visitCall(expression: IrCall): IrExpression {
