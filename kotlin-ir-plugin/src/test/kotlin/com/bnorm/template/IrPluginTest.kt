@@ -30,13 +30,17 @@ class IrPluginTest {
   @Test
   fun `IR plugin success`() {
     val result = compile(
-      sourceFile = SourceFile.kotlin(
+    sourceFile = SourceFile.kotlin(
         "main.kt", """
-fun main() {
-  println(debug())
+
+fun evalAdd(a: Int, b: Int): Int {
+    return a + b
 }
 
-fun debug() = "Hello, World!"
+fun main() {
+    // evalAdd(1, 2) must be evaluated as 3
+    println(evalAdd(1, 2))
+}  
 """
       )
     )
@@ -46,7 +50,7 @@ fun debug() = "Hello, World!"
 
 fun compile(
   sourceFiles: List<SourceFile>,
-  plugin: CompilerPluginRegistrar = TemplateCompilerRegistrar(),
+  plugin: CompilerPluginRegistrar = EvalCompilerPluginRegistrar(),
 ): JvmCompilationResult {
   return KotlinCompilation().apply {
     sources = sourceFiles
@@ -57,7 +61,7 @@ fun compile(
 
 fun compile(
   sourceFile: SourceFile,
-  plugin: CompilerPluginRegistrar = TemplateCompilerRegistrar(),
+  plugin: CompilerPluginRegistrar = EvalCompilerPluginRegistrar(),
 ): JvmCompilationResult {
   return compile(listOf(sourceFile), plugin)
 }

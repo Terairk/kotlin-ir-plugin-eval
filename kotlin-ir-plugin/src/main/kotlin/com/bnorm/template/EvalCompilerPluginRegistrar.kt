@@ -14,21 +14,24 @@
  * limitations under the License.
  */
 
+@file:OptIn(ExperimentalCompilerApi::class)
+
 package com.bnorm.template
 
+import com.google.auto.service.AutoService
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
-import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
-import org.jetbrains.kotlin.cli.common.messages.MessageCollector
-import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
+import org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar
+import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
+import org.jetbrains.kotlin.config.CompilerConfiguration
 
-class TemplateIrGenerationExtension(
-  private val messageCollector: MessageCollector,
-  private val string: String,
-  private val file: String
-) : IrGenerationExtension {
-  override fun generate(moduleFragment: IrModuleFragment, pluginContext: IrPluginContext) {
-    messageCollector.report(CompilerMessageSeverity.INFO, "Argument 'string' = $string")
-    messageCollector.report(CompilerMessageSeverity.INFO, "Argument 'file' = $file")
+@AutoService(CompilerPluginRegistrar::class)
+class EvalCompilerPluginRegistrar(
+) : CompilerPluginRegistrar() {
+  override val supportsK2 = true
+
+  @OptIn(ExperimentalCompilerApi::class)
+  override fun ExtensionStorage.registerExtensions(configuration: CompilerConfiguration) {
+    IrGenerationExtension.registerExtension(IrExpressionCompileGenerationExtension())
   }
 }
