@@ -25,12 +25,27 @@ import org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar
 import kotlin.test.assertEquals
 import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 import org.junit.Test
+import kotlin.io.path.writeText
+import kotlin.io.path.createTempFile
 
 class IrPluginTest {
+  private class TestCase(private val sourceCode: String) {
+    fun assertCompilationSuccess() {
+      val tempFile = createTempFile(prefix = "main", suffix = ".kt").also { path ->
+        path.writeText(sourceCode)
+        path.toFile().deleteOnExit()
+      }.toFile()
+
+      val result = compile(sourceFile = SourceFile.fromPath(tempFile))
+      assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode)
+    }
+  }
+
+  // This one works
   @Test
-  fun `IR plugin success`() {
+  fun `evalAdd(1,2) = 3`() {
     val result = compile(
-    sourceFile = SourceFile.kotlin(
+      sourceFile = SourceFile.kotlin(
         "main.kt", """
 
 fun evalAdd(a: Int, b: Int): Int {
@@ -45,6 +60,206 @@ fun main() {
       )
     )
     assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode)
+  }
+
+  // This one works
+  @Test
+  fun `evalAdd(1, evalAdd(1,2)) = 6`() {
+    TestCase(
+      """
+      fun main() {
+        println(evalAdd(1, evalAdd(2,3)))
+      }
+      
+      fun evalAdd(a: Int, b: Int): Int {
+        return a + b
+      }
+    """
+    ).assertCompilationSuccess()
+  }
+
+  // This one works
+  @Test
+  fun `evalMultiply(4, 5) = 20`() {
+    TestCase(
+      """
+      fun main() {
+        println(evalMultiply(4,5))
+      }
+      
+      fun evalMultiply(a: Int, b: Int): Int {
+        return a * b
+      }
+    """
+    ).assertCompilationSuccess()
+  }
+
+  // This one works
+  @Test
+  fun `evalComplex(10, 5) = 30`() {
+    TestCase(
+      """
+      fun main() {
+        println(evalComplex(10,5))
+      }
+      
+      fun evalComplex(a: Int, b: Int): Int {
+        return (a + b) * 2
+      }
+    """
+    ).assertCompilationSuccess()
+  }
+
+  // Currently doesn't work
+  // TODO()
+  @Test
+  fun `evalMax(10, 5) = 10`() {
+    TestCase(
+      """
+      fun main() {
+        println(evalMax(10,5))
+      }
+      
+      fun evalMax(a: Int, b: Int): Int {
+        if (a > b) {
+          return a
+        } else {
+          return b
+        }
+      }
+    """
+    ).assertCompilationSuccess()
+  }
+
+  // Currently works
+  @Test
+  fun `evalWhen(-1)=negative`() {
+    TestCase(
+      """
+      fun main() {
+        println(evalWhen(-1))
+      }
+      
+      fun evalWhen(x: Int): String {
+        return when {
+          x > 0 -> "positive"
+          x < 0 -> "negative"
+        else -> "zero"
+        }
+      }
+    """
+    ).assertCompilationSuccess()
+  }
+
+  // Currently doesn't work
+  // TODO()
+  @Test
+  fun `evalSum(5)=15`() {
+    TestCase(
+      """
+      fun main() {
+        println(evalSum(5))
+      }
+      
+      fun evalSum(n: Int): Int {
+          var sum = 0
+          var i = 1
+          while (i <= n) {
+              sum += i
+              i++
+          }
+          return sum
+      }
+    """
+    ).assertCompilationSuccess()
+  }
+
+  // Currently doesnt' work
+  // TODO()
+  @Test
+  fun `evalFactorial(120)=120`() {
+    TestCase(
+      """
+      fun main() {
+        println(evalFactorial(5))
+      }
+      
+      fun evalFactorial(n: Int): Int {
+          var result = 1
+          var i = 1
+          while (i <= n) {
+              result *= i
+              i++
+          }
+          return result
+      }
+    """
+    ).assertCompilationSuccess()
+  }
+
+  // Currently works
+  @Test
+  fun `evalConcat(hello, world)=helloworld`() {
+    TestCase(
+      """
+      fun main() {
+        println(evalConcat("Hello", "World"))
+      }
+      
+      fun evalConcat(a: String, b: String): String {
+         return a + b
+      }
+    """
+    ).assertCompilationSuccess()
+  }
+
+
+  // Doesn't compile
+  @Test
+  fun `evalStringLength(Test)=4`() {
+    TestCase(
+      """
+      fun main() {
+        println(evalStringLength("Test"))
+      }
+      
+      fun evalStringLength(str: String): Int {
+         return str.length
+      }
+    """
+    ).assertCompilationSuccess()
+  }
+
+  // Doesn't work, GET_VAR isn't behaving as expected
+  // TODO()
+  @Test
+  fun `evalAnd(true, false) = false`() {
+    TestCase(
+      """
+      fun main() {
+        println(evalAnd(true, false))
+      }
+      
+      fun evalAnd(a: Boolean, b: Boolean): Boolean {
+         return a && b
+      }
+    """).assertCompilationSuccess()
+  }
+
+  // Doesn't work
+  // TODO()
+  @Test
+  fun `evalAndOr(true, false) = false`() {
+    TestCase(
+      """
+      fun main() {
+        println(evalAndOr(true, false))
+      }
+      
+      fun evalAndOr(a: Boolean, b: Boolean): Boolean {
+         return (a && b) || b
+      }
+    """).assertCompilationSuccess()
   }
 }
 

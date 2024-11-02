@@ -14,11 +14,13 @@ class IrEvalFunctionTransformer(
   private val pluginContext: IrPluginContext
 ) : IrElementTransformerVoid() {
   override fun visitCall(expression: IrCall): IrExpression {
-    if (!expression.symbol.owner.name.asString().startsWith("eval")) {
+    val functionName = expression.symbol.owner.name.asString()
+    val isComparisonOperator = functionName in setOf("greater", "less", "greaterOrEqual", "lessOrEqual",
+      "equals", "notEquals")
+
+    if (!functionName.startsWith("eval") && !isComparisonOperator) {
       return super.visitCall(expression)
     }
-
-    println("got past eval.")
 
     // Transform arguments recursively
     val transformedArgs = expression.valueArgumentsCount.let { count ->
@@ -26,8 +28,6 @@ class IrEvalFunctionTransformer(
         expression.getValueArgument(i)?.transform(this, null)
       }
     }
-
-    println("past 1")
 
     // 2. Check if all arguments are constants
     if (transformedArgs.all { it is IrConst<*> }) {
@@ -37,8 +37,6 @@ class IrEvalFunctionTransformer(
         .associate { (param, arg) ->
           param to (arg as IrConst<*>)
         }
-
-      println("past 2/3")
 
       // 4. Initialize interpreter with the constant parameters
       // Create a new interpreter instance for this function call
@@ -50,27 +48,7 @@ class IrEvalFunctionTransformer(
 
       // 6. Return the result if evaluation was successful
       if (result is IrConst<*>) {
-        // Create new constant based on the result type
-
-        // create a temporary value to store the result
-//        val tempValueParameter = IrValueParameterImpl(
-//          startOffset = expression.startOffset,
-//          endOffset = expression.endOffset,
-//          origin = IrDeclarationOrigin.DEFINED,
-//          symbol = IrValueParameterSymbolImpl(),
-//          name = Name.identifier("temp_${expression.symbol.owner.name}"),
-//          index = -1,
-//          type = result.type,
-//          varargElementType = null,
-//          isCrossinline = false,
-//          isNoinline = false,
-//          isHidden = false,
-//          isAssignable = false
-//        )
-//
-//
-//        sharedContext.variables[tempValueParameter.symbol] = result
-        println("got here const")
+//        println("got here const")
         return when (result.kind) {
           IrConstKind.Int -> IrConstImpl(
             startOffset = expression.startOffset,

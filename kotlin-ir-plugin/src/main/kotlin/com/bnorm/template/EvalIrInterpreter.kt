@@ -41,7 +41,6 @@ class EvalIrInterpreter(private val context: IrPluginContext) {
         }
       }
     } catch (e: Exception) {
-      throw e
       null
     }
   }
@@ -65,6 +64,7 @@ class EvalIrInterpreter(private val context: IrPluginContext) {
         }) as IrExpression
         is IrWhen      -> evaluateWhen(statement)
         is IrWhileLoop -> evaluateWhile(statement)
+        is IrGetValue -> evaluateExpression(statement)
         else           -> ({
           when (val transformed = statement.transform(constTransformer, null)) {
                 is IrGetValue -> {
@@ -98,11 +98,14 @@ class EvalIrInterpreter(private val context: IrPluginContext) {
       }
       is IrGetValue -> {
         // Check if it's a parameter reference
-        println("got here for evalExpr")
+//        println("got here for evalExpr")
         localContext[expr.symbol] ?: expr
       }
+      is IrWhen -> {
+        evaluateWhen(expr)
+      }
       else -> {
-        println("got const for evalExpr")
+//        println("got const for evalExpr")
         expr.transform(constTransformer, null)
       }
     }
@@ -120,16 +123,43 @@ class EvalIrInterpreter(private val context: IrPluginContext) {
 
   private fun evaluateWhile(whileExpr: IrWhileLoop): IrExpression {
     var result: IrExpression = createUnitValue()
+    val maxIterations = 10000
+    var iterations = 0
 
-    while (true) {
-      val condition = evaluateExpression(whileExpr.condition)
-      if (condition !is IrConst<*> || !(condition.value as Boolean)) {
-        break
+    try {
+      while (iterations < maxIterations) {
+        iterations++
+
+        // Evaluate the condition first
+        val evaluatedCondition = evaluateExpression(whileExpr.condition)
+        if (evaluatedCondition !is IrConst<*>) {
+          return whileExpr
+        }
+
+        if (!(evaluatedCondition.value as Boolean)) {
+          break
+        }
+
+        // Evaluate the body to make progress
+        result = whileExpr.body?.let { body ->
+          when (body) {
+            is IrBlockBody -> evaluateBlockBody(body)
+            is IrExpressionBody -> evaluateExpression(body.expression)
+            else -> return whileExpr
+          }
+        } ?: return whileExpr
       }
-      result = whileExpr.body?.let { evaluateExpression(it) }!!
-    }
 
-    return result
+      // If we hit iteration limit, return original expression
+      if (iterations >= maxIterations) {
+        return whileExpr
+      }
+
+      return result
+
+    } catch (e: Exception) {
+      return whileExpr
+    }
   }
 
   private fun createUnitValue(): IrExpression {
